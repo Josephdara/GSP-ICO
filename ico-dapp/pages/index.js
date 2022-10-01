@@ -3,6 +3,7 @@ import Head from "next/head";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Web3Modal } from "web3modal";
+import { GSP_CONTRACT_ABI, GST_CONTRACT_ADDRESS } from "../constant";
 import styles from "../styles/Home.module.css";
 
 export default function Home() {
@@ -11,6 +12,7 @@ export default function Home() {
   const [walletConnected, setWalletConnect] = useState(false);
   const [balanceOfGSP, setBalanceOfGSP] = useState(zero);
   const [tokenAmount, setTokenAmount] = useState(zero);
+  const [loading, setLoading] = useState(false);
   const web3ModalRef = useRef();
 
   async function connectWallet() {
@@ -35,15 +37,56 @@ export default function Home() {
     }
     return web3Provider;
   }
-
-  async function mintGST (amount){
+  async function getGSPBalance() {
     try {
-      const signer = await getProviderOrSigner(true)
-      const GSTContract = new Contract
-      
+      const signer = await getProviderOrSigner(true);
+      const GSTContract = new Contract(
+        GST_CONTRACT_ADDRESS,
+        GSP_CONTRACT_ABI,
+        signer
+      );
+      const address = await signer.getAddress();
+      const balance = await GSTContract.balanceOf(address);
+      setBalanceOfGSP(balance)
     } catch (error) {
       console.error(error);
-      
+    }
+  }
+  async function getTotalMinted() {
+    try {
+      const provider = await getProviderOrSigner();
+      const GSTContract = new Contract(
+        GST_CONTRACT_ADDRESS,
+        GSP_CONTRACT_ABI,
+        provider
+      );
+
+      const balance = await GSTContract.totalSupply();
+      setTokenMinted(getTotalMinted)
+    } catch (error) {
+      console.error(error);
+    }
+  }
+  async function mintGST(amount) {
+    try {
+      const signer = await getProviderOrSigner(true);
+      const GSTContract = new Contract(
+        GST_CONTRACT_ADDRESS,
+        GSP_CONTRACT_ABI,
+        signer
+      );
+      const value = 0.005 * amount;
+      const tx = await GSTContract.mint(amount, {
+        value: utils.parseEther(value.toString()),
+      });
+      setLoading(true);
+      await tx.wait();
+      setLoading(false);
+      window.alert("Welcome, You now own Glory Sound Tokens");
+      await getGSPBalance();
+      await getTotalMinted();
+    } catch (error) {
+      console.error(error);
     }
   }
   async function renderButton() {
