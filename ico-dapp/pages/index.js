@@ -1,9 +1,8 @@
-import { BigNumber, Contract, utils } from "ethers";
+import { BigNumber, Contract, utils, providers } from "ethers";
 import Head from "next/head";
 import Image from "next/image";
 import React, { useEffect, useRef, useState } from "react";
-
-import { Web3Modal } from "web3modal";
+import Web3Modal from "web3modal";
 import {
   GSP_CONTRACT_ABI,
   GST_CONTRACT_ADDRESS,
@@ -13,6 +12,7 @@ import {
 import styles from "../styles/Home.module.css";
 
 export default function Home() {
+  const web3ModalRef = useRef();
   const zero = BigNumber.from(0);
   const [tokenMinted, setTokenMinted] = useState(zero);
   const [walletConnected, setWalletConnect] = useState(false);
@@ -20,7 +20,7 @@ export default function Home() {
   const [tokenAmount, setTokenAmount] = useState(zero);
   const [loading, setLoading] = useState(false);
   const [unclaimedTokens, setUnclaimedTokens] = useState(zero);
-  const web3ModalRef = useRef();
+  
 
   async function connectWallet() {
     try {
@@ -32,7 +32,7 @@ export default function Home() {
   }
   async function getProviderOrSigner(needSigner = false) {
     const provider = await web3ModalRef.current.connect();
-    const web3Provider = new provider.Web3Provider(provider);
+    const web3Provider = new providers.Web3Provider(provider);
     const { chainId } = await web3Provider.getNetwork();
     if (chainId !== 5) {
       window.alert("You need to be on Goerli");
@@ -69,7 +69,7 @@ export default function Home() {
       );
 
       const balance = await GSTContract.totalSupply();
-      setTokenMinted(getTotalMinted);
+      setTokenMinted(balance);
     } catch (error) {
       console.error(error);
     }
@@ -92,7 +92,7 @@ export default function Home() {
       window.alert("Welcome, You now own Glory Sound Tokens");
       await getGSPBalance();
       await getTotalMinted();
-      await unclaimedTokens()
+      await getTokensToBeClaimed();
     } catch (error) {
       console.error(error);
     }
@@ -105,30 +105,36 @@ export default function Home() {
         NFT_CONTRACT_ABI,
         provider
       );
-      const signer = await getProviderOrSigner(true)
-      const address = await signer.getAddress()
-      const balance = await nftContract.balanceOf(address)
-      if(balance === zero){
-        setUnclaimedTokens(zero)
-      } else  {
+      const GSTContract = new Contract(
+        GST_CONTRACT_ADDRESS,
+        GSP_CONTRACT_ABI,
+        provider
+      );
+      const signer = await getProviderOrSigner(true);
+      const address = await signer.getAddress();
+      const balance = await nftContract.balanceOf(address);
+      if (balance === zero) {
+        setUnclaimedTokens(zero);
+      } else {
         var amount = 0;
-        for (var i = 0; i < balance; i++){
-          const tokenID = await nftContract.tokenOfOwnerByIndex(address, i)
-          const claimed =  await GSTContract.tokenIDsClaimed(tokenID)
-          if(!claimed){
-            amount++
+        for (var i = 0; i < balance; i++) {
+          const tokenID = await nftContract.tokenOfOwnerByIndex(address, i);
+          
+          const claimed = await GSTContract.tokenIDsClaimed(tokenID);
+         
+          if (!claimed) {
+            amount++;
           }
-
         }
-      } 
+        setUnclaimedTokens(BigNumber.from(amount))
+      }
     } catch (error) {
       console.error(error);
-      setUnclaimedTokens(zero)
+      setUnclaimedTokens(zero);
     }
   }
 
-
-  const claimGST = async () =>{
+  const claimGST = async () => {
     try {
       const signer = await getProviderOrSigner(true);
       const GSTContract = new Contract(
@@ -136,20 +142,19 @@ export default function Home() {
         GSP_CONTRACT_ABI,
         signer
       );
-      const tx = await GSTContract.claim()
-      setLoading(true)
-      await tx.wait()
-      setLoading(false)
-      window.alert("Claim to Glory Sound Token Successful")
+      const tx = await GSTContract.claim();
+      setLoading(true);
+      await tx.wait();
+      setLoading(false);
+      window.alert("Claim to Glory Sound Token Successful");
       await getGSPBalance();
       await getTotalMinted();
-      await unclaimedTokens()
-      
-    } catch (error) {console.error(error);
-      
+      await getTokensToBeClaimed();
+    } catch (error) {
+      console.error(error);
     }
-  }
-  async function renderButton() {
+  };
+   const renderButton = () => {
     if (loading) {
       return (
         <div>
@@ -157,13 +162,17 @@ export default function Home() {
         </div>
       );
     }
-    if(unclaimedTokens){
-      return(<div>
-        <div className={styles.description}>
-          {unclaimedTokens * 50} GST to be claimed
+    if (unclaimedTokens > 0) {
+      return (
+        <div>
+          <div className={styles.description}>
+            {unclaimedTokens * 50} GST to be claimed
+          </div>
+          <button onClick={claimGST} className={styles.button}>
+            Claim GST
+          </button>
         </div>
-        <button onClick={claimGST} className= {styles.button}> Claim GST</button>
-      </div>)
+      );
     }
     return (
       <div className={{ display: "flex-col" }}>
@@ -171,7 +180,11 @@ export default function Home() {
           <input
             type="number"
             placeholder="Amount of Tokens"
+           
             onChange={(e) => {
+              if(Number(e.target.value) < 1 ){
+                return "0"
+              } 
               setTokenAmount(BigNumber.from(e.target.value));
             }}
           />
@@ -190,15 +203,15 @@ export default function Home() {
 
   useEffect(() => {
     if (!walletConnected) {
-      web3ModalRef.current = new Web3Modal({
+      web3ModalRef.current = new Web3Modal ({
         network: "goerli",
         providerOptions: {},
         disableInjectedProvider: false,
       });
       connectWallet();
-       getGSPBalance();
-       getTotalMinted();
-       unclaimedTokens()
+      getGSPBalance();
+      getTotalMinted();
+      getTokensToBeClaimed();
     }
   }, [walletConnected]);
 
@@ -220,7 +233,7 @@ export default function Home() {
                 You have Minted {utils.formatEther(balanceOfGSP)} GSP
               </div>
               <div className={styles.description}>
-                {utils.formatEther(tokenMinted)} GSP have been minted
+                {utils.formatEther(tokenMinted)}  of 100,000 GSP have been minted
               </div>
               {renderButton()}
             </div>
@@ -231,12 +244,10 @@ export default function Home() {
           )}
         </div>
         <div>
-          <img className={styles.image} src= "./gsp.png"></img>
+          <img className={styles.image} src="./gsp.png"></img>
         </div>
       </div>
-      <footer className={styles.footer}>
-        Made by josephdara.eth
-      </footer>
+      <footer className={styles.footer}>Made by josephdara.eth</footer>
     </div>
   );
 }
